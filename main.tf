@@ -7,33 +7,25 @@ provider "google" {
     zone = var.zone
 }
 
-#module "org-policy" {
-#  source  = "terraform-google-modules/org-policy/google"
-#  version = "~> 5.1.0"
-#  
-#  constraint        = "constraints/compute.vmExternalIpAccess"
-#  policy_type       = "boolean"
-#  policy_for        = var.project_id
-#  enforce           = false
-#}
-
 module "services" {
-  source  = "terraform-google-modules/project-factory/google//modules/project_services"
-  version = "~> 6.0.0"
+    #Enables 3 required APIs. Compute, Service Networking and IDS
+    source  = "terraform-google-modules/project-factory/google//modules/project_services"
+    version = "~> 6.0.0"
 
-  project_id                  = var.project_id
-  enable_apis                 = var.enable_apis
-  disable_services_on_destroy = var.disable_services_on_destroy
-  disable_dependent_services  = var.disable_dependent_services
+    project_id                  = var.project_id
+    enable_apis                 = var.enable_apis
+    disable_services_on_destroy = var.disable_services_on_destroy
+    disable_dependent_services  = var.disable_dependent_services
 
-  activate_apis = [
-    "compute.googleapis.com",
-    "servicenetworking.googleapis.com",
-    "ids.googleapis.com"
-  ]
+    activate_apis = [
+        "compute.googleapis.com",
+        "servicenetworking.googleapis.com",
+        "ids.googleapis.com"
+    ]
 }
 
 module "networking" {
+    #Creates VPC network and 2 subnets
     depends_on = [module.services.activate_apis]
     source  = "terraform-google-modules/network/google"
     version = "~> 3.0"
@@ -60,11 +52,13 @@ module "networking" {
 }
 
 resource "time_sleep" "wait_30_seconds" {
-  depends_on = [module.networking.subnets]
-  create_duration = "30s"
+    #Adds a delay to ensure VPC creation completes before Compute is started
+    depends_on = [module.networking.subnets]
+    create_duration = "30s"
 }
 
 resource "google_compute_instance" "blue-server" {
+    #Builds a simple apache webserver with a hello world page
     depends_on = [module.firewall_rules]
     project = var.project_id
     zone = var.zone
@@ -96,6 +90,7 @@ resource "google_compute_instance" "blue-server" {
 }
 
 resource "google_compute_instance" "red-server" {
+    #Builds a basic linux server for simulating attacks from the red-subnet
     depends_on = [module.firewall_rules]
     project = var.project_id
     zone = "europe-west1-b"
@@ -121,22 +116,20 @@ resource "google_compute_instance" "red-server" {
     allow_stopping_for_update = true
 }
 
-
-# [START vpc_firewall_create]
+#Start firewall rule creation
 resource "google_compute_firewall" "http" {
-  depends_on = [time_sleep.wait_30_seconds]
-  project     = var.project_id # Replace this with your project ID in quotes
-  name        = "allow-http-traffic"
-  network     = var.network
-  description = "Creates firewall rule targeting tagged instances"
+    depends_on = [time_sleep.wait_30_seconds]
+    project     = var.project_id # Replace this with your project ID in quotes
+    name        = "allow-http-traffic"
+    network     = var.network
+    description = "Creates firewall rule targeting tagged instances"
 
-  allow {
-    protocol = "tcp"
-    ports    = ["80", "8080", "1000-2000"]
+    allow {
+        protocol = "tcp"
+        ports    = ["80", "8080", "1000-2000"]
   }
-  target_tags = ["http-server"]
+    target_tags = ["http-server"]
 }
-# [END vpc_firewall_create]
 
 module "firewall_rules" {
   depends_on = [time_sleep.wait_30_seconds]
@@ -254,3 +247,4 @@ module "firewall_rules" {
     }
   }]
 }
+#End Firewall Creation
